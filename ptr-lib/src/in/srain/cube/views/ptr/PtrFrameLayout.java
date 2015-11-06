@@ -5,7 +5,6 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.PointF;
-import android.support.v4.view.MotionEventCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Gravity;
@@ -59,8 +58,6 @@ public class PtrFrameLayout extends ViewGroup {
     private byte mStatus = PTR_STATUS_INIT;
     private boolean mIsUnderTouch = false;
     private int mAutoScrollRefreshTag = 0x00;
-    private int mActivePointerId = -1;
-    //private float mInitialMotionY;
     private float mInitialDownY;
     private final static String tag = "PullRefreshLayout";
 
@@ -257,8 +254,7 @@ public class PtrFrameLayout extends ViewGroup {
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
 
-        final int action = MotionEventCompat.getActionMasked(ev);
-
+        final int action = ev.getAction();
         if (!isEnabled() 
                 || !mPtrHandler.checkCanDoRefresh(this, mContent, mHeaderView)) {
             // Fail fast if we're not in a state where a swipe is possible
@@ -269,9 +265,8 @@ public class PtrFrameLayout extends ViewGroup {
         }
         switch (action) {
         case MotionEvent.ACTION_DOWN:
-            mActivePointerId = MotionEventCompat.getPointerId(ev, 0);
             mIsBeingDragged = false;
-            final float initialDownY = getMotionEventY(ev, mActivePointerId);
+            final float initialDownY = ev.getY();
             if (initialDownY == -1) {
                 return false;
             }
@@ -280,30 +275,19 @@ public class PtrFrameLayout extends ViewGroup {
             break;
 
         case MotionEvent.ACTION_MOVE:
-            if (mActivePointerId == -1) {
-                return false;
-            }
-
-            final float y = getMotionEventY(ev, mActivePointerId);
+            final float y = ev.getY();
             if (y == -1) {
                 return false;
             }
             final float yDiff = y - mInitialDownY;
             if (yDiff > mPagingTouchSlop && !mIsBeingDragged) {
-                //mInitialMotionY = mInitialDownY + mPagingTouchSlop;
                 mIsBeingDragged = true;
-                // scrollTo(0, (int) yDiff);
             }
-            break;
-
-        case MotionEventCompat.ACTION_POINTER_UP:
-            onSecondaryPointerUp(ev);
             break;
 
         case MotionEvent.ACTION_UP:
         case MotionEvent.ACTION_CANCEL:
             mIsBeingDragged = false;
-            mActivePointerId = -1;
             break;
         }
 
@@ -313,7 +297,7 @@ public class PtrFrameLayout extends ViewGroup {
     @SuppressLint("NewApi")
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
-        final int action = MotionEventCompat.getActionMasked(ev);
+        final int action = ev.getAction();
 
         if (!isEnabled() || !mPtrHandler.checkCanDoRefresh(this, mContent, mHeaderView)) {
             // Fail fast if we're not in a state where a swipe is possible
@@ -324,16 +308,11 @@ public class PtrFrameLayout extends ViewGroup {
         }
         switch (action) {
         case MotionEvent.ACTION_DOWN:
-            mActivePointerId = MotionEventCompat.getPointerId(ev, 0);
             mScrollChecker.abortIfWorking();
             mIsBeingDragged = false;
             break;
 
         case MotionEvent.ACTION_MOVE: {
-            final int pointerIndex = MotionEventCompat.findPointerIndex(ev, mActivePointerId);
-            if (pointerIndex < 0) {
-                return false;
-            }
             float offsetX = ev.getX() - mPtLastMove.x;
             float offsetY = (int) (ev.getY() - mPtLastMove.y);
 
@@ -350,54 +329,19 @@ public class PtrFrameLayout extends ViewGroup {
 
             break;
         }
-        case MotionEventCompat.ACTION_POINTER_DOWN: {
-            final int index = MotionEventCompat.getActionIndex(ev);
-            mActivePointerId = MotionEventCompat.getPointerId(ev, index);
-            break;
-        }
-
-        case MotionEventCompat.ACTION_POINTER_UP:
-            onSecondaryPointerUp(ev);
-            break;
 
         case MotionEvent.ACTION_UP:
         case MotionEvent.ACTION_CANCEL: {
-            if (mActivePointerId == -1) {
-                if (action == MotionEvent.ACTION_UP) {
-                    Log.e(tag, "Got ACTION_UP event but don't have an active pointer id.");
-                }
-                return false;
-            }
             mIsBeingDragged = false;
             if (mCurrentPos > POS_START) {
                 Log.d(tag, "mCurrentPos:" + mCurrentPos);
                 onRelease(false);
                 return true;
             }
-            mActivePointerId = -1;
         }
         }
 
         return true;
-    }
-
-    private void onSecondaryPointerUp(MotionEvent ev) {
-        final int pointerIndex = MotionEventCompat.getActionIndex(ev);
-        final int pointerId = MotionEventCompat.getPointerId(ev, pointerIndex);
-        if (pointerId == mActivePointerId) {
-            // This was our active pointer going up. Choose a new
-            // active pointer and adjust accordingly.
-            final int newPointerIndex = pointerIndex == 0 ? 1 : 0;
-            mActivePointerId = MotionEventCompat.getPointerId(ev, newPointerIndex);
-        }
-    }
-
-    private float getMotionEventY(MotionEvent ev, int activePointerId) {
-        final int index = MotionEventCompat.findPointerIndex(ev, activePointerId);
-        if (index < 0) {
-            return -1;
-        }
-        return MotionEventCompat.getY(ev, index);
     }
 
     /**
